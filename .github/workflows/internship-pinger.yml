@@ -2,16 +2,23 @@ name: Internship Pinger
 
 on:
   schedule:
-    - cron: "*/5 * * * *"     
-  workflow_dispatch:       
+    - cron: "2-59/5 * * * *"   # every 5 min starting at :02
+  workflow_dispatch:
+
+concurrency:
+  group: internship-pinger
+  cancel-in-progress: true
 
 jobs:
   ping:
     runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
 
-      - uses: actions/setup-python@v5
+    steps:
+      - name: Check out repo
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
         with:
           python-version: "3.11"
 
@@ -20,11 +27,23 @@ jobs:
           python -m pip install --upgrade pip
           pip install -r requirements.txt
 
-      - name: Restore state cache
-        uses: actions/cache@v4
+      # ---- OPTION A: rolling cache keys ----
+      - name: Restore state (latest available)
+        id: cache-restore
+        uses: actions/cache/restore@v4
         with:
           path: latest_internship.json
-          key: internship-state-v1
+          # unique key per run so we can save a fresh copy each time
+          key: internship-state-v1-${{ github.run_id }}
+          # this prefix lets us restore the most recent prior cache
+          restore-keys: |
+            internship-state-v1-
+
+      - name: Ensure state file exists
+        run: |
+          if [ ! -f latest_internship.json ]; then
+            echo "{}" > latest_internship.json
+          fi
 
       - name: Run pinger
         env:
@@ -32,10 +51,13 @@ jobs:
           PUSHOVER_USER:  ${{ secrets.PUSHOVER_USER }}
         run: python pinger.py
 
-      - name: Save state artifact
+      - name: Save updated state for next run
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/cache/save@v4
         with:
-          name: latest-internship-state
           path: latest_internship.json
-          if-no-files-found: ignore
+          key: internship-state-v1-${{ github.run_id }}
+
+      # Optional: keep this while debugging; safe to remove later
+      - name: Log run info
+        run: echo "Ran at (UTC) $(date -u) — event=${{ github.event_name }} schedule='${{ github.event.schedule }}'"
