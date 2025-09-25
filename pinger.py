@@ -123,7 +123,7 @@ def main():
         prev = {}
 
     if latest != prev:
-        msg = f"🚨 New Internship!\n{latest['company']} — {latest['role']}\n📍 {latest['location']}"
+        msg = f"🧑🏿‍🌾 New Internship\n{latest['company']} — {latest['role']}\n📍 {latest['location']}"
         send_pushover(msg)
         with open(STATE_FILE, "w") as f:
             json.dump(latest, f)
