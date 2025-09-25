@@ -1,12 +1,10 @@
-#!/usr/bin/env python3
 import os
 import re
 import json
 import sys
 import requests
-from bs4 import BeautifulSoup  # pip install beautifulsoup4
+from bs4 import BeautifulSoup
 
-# ── Required env vars (use GitHub Actions Secrets or local .env via python-dotenv)
 PUSHOVER_TOKEN = os.environ["PUSHOVER_TOKEN"]
 PUSHOVER_USER  = os.environ["PUSHOVER_USER"]
 
@@ -25,8 +23,8 @@ def send_pushover(msg: str, title: str = "New Internship Alert") -> None:
     resp.raise_for_status()
 
 def strip_markdown(text: str) -> str:
-    text = re.sub(r"\[([^\]]+)\]\([^)]+\)", r"\1", text)  # [label](url) -> label
-    text = re.sub(r"^[^\w\[]+\s*", "", text)              # drop leading emoji/bullets
+    text = re.sub(r"\[([^\]]+)\]\([^)]+\)", r"\1", text) 
+    text = re.sub(r"^[^\w\[]+\s*", "", text)             
     return " ".join(text.split())
 
 def get_section_slice(md: str) -> str:
@@ -100,12 +98,10 @@ def get_latest_internship():
     md = requests.get(RAW_URL, timeout=TIMEOUT_SEC).text
     sec_text = get_section_slice(md)
 
-    # Current repo format uses an HTML <table>
     result = parse_html_table(sec_text)
     if result:
         return result
-
-    # Fallback if they switch back to Markdown tables later
+    
     result = parse_markdown_table(sec_text)
     if result:
         return result
@@ -136,6 +132,4 @@ def main():
         print("No change; not sending push.")
 
 if __name__ == "__main__":
-    # Optional: support local .env for dev without committing secrets
-    # from dotenv import load_dotenv; load_dotenv()
     main()
