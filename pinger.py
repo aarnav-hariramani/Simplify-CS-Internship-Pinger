@@ -10,7 +10,11 @@ PUSHOVER_USER  = os.environ["PUSHOVER_USER"]
 
 STATE_FILE     = "latest_internship.json"
 RAW_URL        = "https://raw.githubusercontent.com/SimplifyJobs/Summer2026-Internships/dev/README.md"
-SECTION_TITLE  = "Data Science, AI & Machine Learning Internship Roles"
+SECTION_TITLES = [
+    "Data Science, AI & Machine Learning Internship Roles",
+    "Software Engineering Internship Roles"
+]
+
 TIMEOUT_SEC    = 30
 
 def send_pushover(msg: str, title: str = "New Internship Alert") -> None:
@@ -27,15 +31,15 @@ def strip_markdown(text: str) -> str:
     text = re.sub(r"^[^\w\[]+\s*", "", text)             
     return " ".join(text.split())
 
-def get_section_slice(md: str) -> str:
+def get_section_slice(md: str, section_title: str) -> str:
     lines = md.splitlines()
     try:
         sec_idx = next(
             i for i, ln in enumerate(lines)
-            if ln.strip().startswith("##") and SECTION_TITLE.lower() in ln.lower()
+            if ln.strip().startswith("##") and section_title.lower() in ln.lower()
         )
     except StopIteration:
-        raise RuntimeError("Could not find the Data Science/AI section header.")
+        raise RuntimeError(f"Could not find section header: {section_title}")
 
     try:
         next_header = next(i for i in range(sec_idx + 1, len(lines)) if lines[i].startswith("## "))
@@ -43,6 +47,7 @@ def get_section_slice(md: str) -> str:
         next_header = len(lines)
 
     return "\n".join(lines[sec_idx:next_header])
+
 
 def parse_html_table(html_snippet: str):
     soup = BeautifulSoup(html_snippet, "html.parser")
@@ -94,42 +99,56 @@ def parse_markdown_table(section_text: str):
         "location": strip_markdown(cols[2]),
     }
 
-def get_latest_internship():
+def get_latest_internships():
     md = requests.get(RAW_URL, timeout=TIMEOUT_SEC).text
-    sec_text = get_section_slice(md)
+    all_results = {}
 
-    result = parse_html_table(sec_text)
-    if result:
-        return result
+    for title in SECTION_TITLES:
+        sec_text = get_section_slice(md, title)
+
+        result = parse_html_table(sec_text) or parse_markdown_table(sec_text)
+        if result:
+            all_results[title] = result
+        else:
+            print(f"⚠️ Could not parse section: {title}")
+
+    if not all_results:
+        raise RuntimeError("No tables found in any target section.")
     
-    result = parse_markdown_table(sec_text)
-    if result:
-        return result
-
-    raise RuntimeError("Could not find a table in the target section (HTML or Markdown).")
+    return all_results
 
 def main():
     try:
-        latest = get_latest_internship()
-        print("Latest parsed:", latest)
+        latest_all = get_latest_internships()
+        print("Latest parsed:", latest_all)
     except Exception as e:
         print("ERROR:", e, file=sys.stderr)
         raise
 
     try:
         with open(STATE_FILE, "r") as f:
-            prev = json.load(f)
+            prev_all = json.load(f)
     except FileNotFoundError:
-        prev = {}
+        prev_all = {}
 
-    if latest != prev:
-        msg = f"🧑🏿‍🌾 New Internship\n{latest['company']} — {latest['role']}\n📍 {latest['location']}"
-        send_pushover(msg)
+    changes = []
+    for section, latest in latest_all.items():
+        prev = prev_all.get(section, {})
+        if latest != prev:
+            msg = (
+                f"🚀 New {section}\n"
+                f"{latest['company']} — {latest['role']}\n📍 {latest['location']}"
+            )
+            send_pushover(msg, title=f"New Internship in {section.split()[0]}")
+            changes.append(section)
+    
+    if changes:
         with open(STATE_FILE, "w") as f:
-            json.dump(latest, f)
-        print("State updated. Notification sent.")
+            json.dump(latest_all, f)
+        print("Updated state; notifications sent for:", ", ".join(changes))
     else:
         print("No change; not sending push.")
+
 
 if __name__ == "__main__":
     main()
